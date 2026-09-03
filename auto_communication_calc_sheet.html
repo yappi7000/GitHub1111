@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>通信費自動計算シート</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-light: #eff6ff;
+    --border: #cbd5e1;
+    --bg-header: #f8fafc;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --danger: #ef4444;
+    --accent: #059669;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Hiragino Sans", "Meiryo", sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f1f5f9;
+    color: var(--text-main);
+  }
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    overflow: hidden;
+  }
+  .header {
+    background: #1e293b;
+    color: #fff;
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .header h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .description {
+    padding: 12px 24px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .table-wrapper {
+    overflow-x: auto;
+    padding: 16px 24px;
+  }
+  table.calc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: #fff;
+  }
+  table.calc-table th, table.calc-table td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: center;
+    vertical-align: middle;
+  }
+  table.calc-table th {
+    background: var(--bg-header);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .row-header {
+    background: #f1f5f9;
+    font-weight: 600;
+    text-align: left !important;
+    width: 220px;
+    min-width: 200px;
+  }
+  .section-divider {
+    background: #e2e8f0;
+    font-weight: bold;
+    text-align: center !important;
+    color: #334155;
+    padding: 8px !important;
+  }
+  .auto-calc-section {
+    background: #e0f2fe;
+    font-weight: bold;
+    text-align: center !important;
+    color: #0369a1;
+    padding: 10px !important;
+  }
+  input[type="text"], input[type="date"], select {
+    width: 100%;
+    min-width: 140px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    background: #fff;
+  }
+  input[type="number"] {
+    width: 100%;
+    min-width: 80px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    text-align: right;
+  }
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  }
+  .calculated-cell {
+    background: #f8fafc;
+    font-weight: 500;
+    text-align: right !important;
+  }
+  .total-row td {
+    background: #fef2f2;
+    font-weight: bold;
+    font-size: 14px;
+    color: #991b1b;
+  }
+  .total-cell {
+    text-align: right !important;
+  }
+  .action-btns {
+    margin-top: 16px;
+    display: flex;
+    gap: 8px;
+  }
+  button.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-secondary { background: #64748b; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-secondary:hover { background: #475569; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>通信費自動計算シート（中田保之様 仕様）</h1>
+    <div style="font-size: 12px; color: #94a3b8;">※Googleスプレッドシート準拠ロジック搭載</div>
+  </div>
+  <div class="description">
+    ＊印の項目は手入力、その他は選択式または自動計算です。「契約年月日」を入力すると当月の残日数（初月日割）が自動計算されます。
+  </div>
+
+  <div class="table-wrapper">
+    <table class="calc-table" id="calcTable">
+      <thead id="tableHeader">
+        <!-- 列ヘッダー（行追加可能） -->
+      </thead>
+      <tbody id="tableBody">
+        <!-- 各行定義 -->
+      </tbody>
+    </table>
+    
+    <div class="action-btns">
+      <button class="btn btn-primary" onclick="addColumn()">＋ 列（社員／契約者）を追加</button>
+      <button class="btn btn-secondary" onclick="resetToSample()">初期サンプル値に戻す</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// マスターデータ定義（スプレッドシート準拠）
+const PLANS = {
+  "UQ": [
+    { name: "トクトクプラン2~30GB", fee: 0 },
+    { name: "コミコミプランバリュー", fee: 4950 }
+  ],
+  "Ymobile": [
+    { name: "シンプル2Mプラン", fee: 4950 },
+    { name: "シンプル3Lプラン", fee: 0 },
+    { name: "シンプル2Sプラン", fee: 0 },
+    { name: "シンプル3Sプラン", fee: 0 },
+    { name: "シンプル3Mプラン", fee: 2150 }
+  ],
+  "SoftBank": [
+    { name: "ペイトク50", fee: 0 },
+    { name: "ペイトク無制限", fee: 0 },
+    { name: "ミニフィットプラン", fee: 0 }
+  ]
+};
+
+const FAMILY_DISCOUNTS = [
+  { name: "なし", fee: 0 },
+  { name: "シンプル2Mプラン 家族割引サービス", fee: 0 },
+  { name: "ペイトク50 家族割 【3回線以上】", fee: 0 },
+  { name: "シンプル3Lプラン 家族割引サービス", fee: 0 },
+  { name: "シンプル2Lプラン 家族割引サービス", fee: 0 },
+  { name: "シンプル2Sプラン 家族割引サービス", fee: 0 },
+  { name: "シンプル3Sプラン 家族割引サービス", fee: 0 },
+  { name: "初月適用❌ トクトクプラン2家族割", fee: 0 }
+];
+
+const DISCOUNTS_1 = [
+  { name: "なし", fee: 0 },
+  { name: "おうち割光セット", fee: 0 },
+  { name: "おうち光セット", fee: -1650 },
+  { name: "ミニフィットプラン おうち割光セット", fee: 0 },
+  { name: "SoftBankでんきセット割", fee: 0 },
+  { name: "トクトクプラン（～5GBデータ利用時）", fee: -1100 },
+  { name: "自宅セット割", fee: 0 },
+  { name: "親子割", fee: 0 }
+];
+
+const DISCOUNTS_2 = [
+  { name: "なし", fee: 0 },
+  { name: "ペイカード割", fee: 0 },
+  { name: "auPAYカードお支払い割（トクトクプラン2）", fee: 220 },
+  { name: "自宅セット割", fee: -1100 },
+  { name: "トクトクプラン（～5GBデータ利用時）", fee: 0 }
+];
+
+const OPTIONS = [
+  { name: "なし", fee: 0 },
+  { name: "増量オプション", fee: 550 },
+  { name: "DMM", fee: 0 },
+  { name: "持ち込み端末保証 / 持込保障", fee: 715 },
+  { name: "セキュリティパック / iPhoneセキュリティパック", fee: 715 },
+  { name: "安心サポートパックiPhone", fee: 2198 },
+  { name: "保証安心パック", fee: 0 },
+  { name: "HELPO", fee: 0 },
+  { name: "Ponta パス", fee: 0 },
+  { name: "ブック放題", fee: 0 },
+  { name: "ゆれしるオプション", fee: 0 },
+  { name: "ワンニャンサポート", fee: 0 },
+  { name: "AppleMusic", fee: 0 },
+  { name: "paypayカード", fee: 550 }
+];
+
+// 初期データサンプル
+let columnsData = [
+  {
+    name: "中田様 (UQ)",
+    carrier: "UQ",
+    plan: "トクトクプラン2~30GB",
+    familyDisc: "なし",
+    disc1: "なし",
+    disc2: "なし",
+    disc3: "なし",
+    disc4: "なし",
+    disc5: "なし",
+    postPlan: "トクトクプラン2~30GB",
+    postFamilyDisc: "なし",
+    postDisc1: "トクトクプラン（～5GBデータ利用時）",
+    postDisc2: "自宅セット割",
+    postDisc3: "なし",
+    postDisc4: "なし",
+    postDisc5: "なし",
+    opt1: "増量オプション", opt1Months: 0, opt1Lines: 4,
+    opt2: "持ち込み端末保証 / 持込保障", opt2Months: 1, opt2Lines: 4,
+    opt3: "paypayカード", opt3Months: 1, opt3Lines: 1,
+    opt4: "なし", opt4Months: 0, opt4Lines: 0,
+    linesNoFamily: 6,
+    linesFamily: 6,
+    adminFeePerLine: 3850,
+    contractDate: "2026-08-30",
+    initialMonths: 1,
+    postMonths: 2
+  },
+  {
+    name: "戸澤様 (UQ)",
+    carrier: "UQ",
+    plan: "コミコミプランバリュー",
+    familyDisc: "なし",
+    disc1: "なし",
+    disc2: "なし",
+    disc3: "なし",
+    disc4: "なし",
+    disc5: "なし",
+    postPlan: "トクトクプラン2~30GB",
+    postFamilyDisc: "なし",
+    postDisc1: "なし",
+    postDisc2: "なし",
+    postDisc3: "なし",
+    postDisc4: "なし",
+    postDisc5: "なし",
+    opt1: "増量オプション", opt1Months: 0, opt1Lines: 2,
+    opt2: "持ち込み端末保証 / 持込保障", opt2Months: 1, opt2Lines: 3,
+    opt3: "なし", opt3Months: 0, opt3Lines: 0,
+    opt4: "なし", opt4Months: 0, opt4Lines: 0,
+    linesNoFamily: 4,
+    linesFamily: 4,
+    adminFeePerLine: 3850,
+    contractDate: "2026-07-20",
+    initialMonths: 1,
+    postMonths: 1
+  },
+  {
+    name: "自分 (Ymobile)",
+    carrier: "Ymobile",
+    plan: "シンプル2Mプラン",
+    familyDisc: "シンプル2Mプラン 家族割引サービス",
+    disc1: "なし",
+    disc2: "なし",
+    disc3: "なし",
+    disc4: "なし",
+    disc5: "なし",
+    postPlan: "シンプル2Sプラン",
+    postFamilyDisc: "シンプル2Sプラン 家族割引サービス",
+    postDisc1: "おうち光セット",
+    postDisc2: "なし",
+    postDisc3: "なし",
+    postDisc4: "なし",
+    postDisc5: "なし",
+    opt1: "増量オプション", opt1Months: 1, opt1Lines: 2,
+    opt2: "持ち込み端末保証 / 持込保障", opt2Months: 1, opt2Lines: 1,
+    opt3: "なし", opt3Months: 0, opt3Lines: 0,
+    opt4: "なし", opt4Months: 0, opt4Lines: 0,
+    linesNoFamily: 1,
+    linesFamily: 2,
+    adminFeePerLine: 4950,
+    contractDate: "2026-07-25",
+    initialMonths: 1,
+    postMonths: 7
+  }
+];
+
+function getDaysInMonth(year, monthIndex) {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+function calcRemainingDays(dateStr) {
+  if (!dateStr) return 0;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 0;
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const day = d.getDate();
+  const totalDays = getDaysInMonth(year, month);
+  return Math.max(1, totalDays - day + 1);
+}
+
+function getPlanFee(planName) {
+  for (let c in PLANS) {
+    let p = PLANS[c].find(x => x.name === planName);
+    if (p) return p.fee;
+  }
+  return 0;
+}
+
+function getDisc1Fee(discName) {
+  let d = DISCOUNTS_1.find(x => x.name === discName);
+  return d ? d.fee : 0;
+}
+
+function getDisc2Fee(discName) {
+  let d = DISCOUNTS_2.find(x => x.name === discName);
+  return d ? d.fee : 0;
+}
+
+function getOptFee(optName) {
+  let o = OPTIONS.find(x => x.name === optName);
+  return o ? o.fee : 0;
+}
+
+function renderTable() {
+  const thead = document.getElementById("tableHeader");
+  const tbody = document.getElementById("tableBody");
+  
+  // ヘッダー描画
+  let htr = '<tr><th class="row-header">項目名</th>';
+  columnsData.forEach((col, idx) => {
+    htr += `<th>列 ${idx + 1} <button style="color:red;border:none;background:none;cursor:pointer;" onclick="removeColumn(${idx})">×</button></th>`;
+  });
+  htr += '</tr>';
+  thead.innerHTML = htr;
+
+  // 定義行のレンダリング
+  const rows = [
+    { type: "section", title: "■ 基本情報・プラン入力（手入力 / 選択）" },
+    { key: "name", label: "＊名前 必ず記載お願いします", inputType: "text" },
+    { key: "carrier", label: "キャリア", inputType: "carrier-select" },
+    { key: "plan", label: "契約プラン", inputType: "plan-select" },
+    { key: "planFee", label: " 料金（基本料）", isCalc: true },
+    { key: "familyDisc", label: "家族割", inputType: "family-select" },
+    { key: "familyDiscFee", label: " 料金（家族割）", isCalc: true },
+    { key: "disc1", label: "割引①", inputType: "disc1-select" },
+    { key: "disc1Fee", label: " 料金（割引①）", isCalc: true },
+    { key: "disc2", label: "割引②", inputType: "disc2-select" },
+    { key: "disc2Fee", label: " 料金（割引②）", isCalc: true },
+    
+    { type: "section", title: "■ プラン変更後の設定" },
+    { key: "postPlan", label: "変更後 プラン", inputType: "post-plan-select" },
+    { key: "postPlanFee", label: " 料金", isCalc: true },
+    { key: "postFamilyDisc", label: " 家族割", inputType: "post-family-select" },
+    { key: "postFamilyDiscFee", label: " 料金", isCalc: true },
+    { key: "postDisc1", label: " 割引①", inputType: "post-disc1-select" },
+    { key: "postDisc1Fee", label: " 料金", isCalc: true },
+    { key: "postDisc2", label: " 割引②", inputType: "post-disc2-select" },
+    { key: "postDisc2Fee", label: " 料金", isCalc: true },
+
+    { type: "section", title: "■ オプション設定" },
+    { key: "opt1", label: "オプション①", inputType: "opt-select", optNum: 1 },
+    { key: "opt1Months", label: "オプション①維持月数", inputType: "number", optNum: 1 },
+    { key: "opt1Lines", label: "オプション①回線数", inputType: "number", optNum: 1 },
+    { key: "opt1Total", label: " 料金（オプション①計）", isCalc: true },
+
+    { key: "opt2", label: "オプション②", inputType: "opt-select", optNum: 2 },
+    { key: "opt2Months", label: "オプション②維持月数", inputType: "number", optNum: 2 },
+    { key: "opt2Lines", label: "オプション②回線数", inputType: "number", optNum: 2 },
+    { key: "opt2Total", label: " 料金（オプション②計）", isCalc: true },
+
+    { key: "opt3", label: "オプション③", inputType: "opt-select", optNum: 3 },
+    { key: "opt3Months", label: "オプション③維持月数", inputType: "number", optNum: 3 },
+    { key: "opt3Lines", label: "オプション③回線数", inputType: "number", optNum: 3 },
+    { key: "opt3Total", label: " 料金（オプション③計）", isCalc: true },
+
+    { type: "section", title: "■ 契約台数・契約期間" },
+    { key: "linesNoFamily", label: "＊回線数（家族割適用❌）", inputType: "number" },
+    { key: "linesFamily", label: "＊回線数（家族割適用⭕️）", inputType: "number" },
+    { key: "adminFeePerLine", label: "＊事務手数料（1回線あたり）", inputType: "number" },
+    { key: "contractDate", label: "＊契約年月日", inputType: "date" },
+    { key: "prorateDays", label: "初月の日割（残日数）", isCalc: true },
+    { key: "initialMonths", label: "＊初期プラン契約月数（日割除く）", inputType: "number" },
+    { key: "postMonths", label: "＊変更後の契約月数", inputType: "number" },
+
+    { type: "auto-calc-header", title: "ここから下は自動計算です（※関数が入っている為 触らないようご注意下さい）" },
+
+    { key: "prorateNoFamilyPlan", label: "初月日割り [家族割❌] プラン基本料金", isCalc: true },
+    { key: "prorateFamilyPlan", label: "初月日割り [家族割⭕️] プラン基本料金", isCalc: true },
+    { key: "totalAdminFee", label: "事務手数料 合計", isCalc: true },
+
+    { key: "initial2ndNoFamilyPlan", label: "初期契約2ヶ月目以降 [家族割❌] プラン", isCalc: true },
+    { key: "initial2ndFamilyPlan", label: "初期契約2ヶ月目以降 [家族割⭕️] プラン", isCalc: true },
+
+    { key: "postNoFamilyDisc1", label: "変更後 [家族割❌] 割引①", isCalc: true },
+    { key: "postFamilyDisc1", label: "変更後 [家族割⭕️] 割引①", isCalc: true },
+    { key: "postNoFamilyDisc2", label: "変更後 [家族割❌] 割引②", isCalc: true },
+    { key: "postFamilyDisc2", label: "変更後 [家族割⭕️] 割引②", isCalc: true },
+
+    { key: "grandTotal", label: "通信費 合計金額", isCalc: true, isTotal: true }
+  ];
+
+  let bhtml = '';
+  rows.forEach(r => {
+    if (r.type === "section") {
+      bhtml += `<tr><td colspan="${columnsData.length + 1}" class="section-divider">${r.title}</td></tr>`;
+      return;
+    }
+    if (r.type === "auto-calc-header") {
+      bhtml += `<tr><td colspan="${columnsData.length + 1}" class="auto-calc-section">${r.title}</td></tr>`;
+      return;
+    }
+
+    let isTotalRow = r.isTotal ? 'class="total-row"' : '';
+    bhtml += `<tr ${isTotalRow}><td class="row-header">${r.label}</td>`;
+
+    columnsData.forEach((col, cIdx) => {
+      if (r.isCalc) {
+        let cellClass = r.isTotal ? 'total-cell' : 'calculated-cell';
+        bhtml += `<td class="${cellClass}" id="cell_${r.key}_${cIdx}">-</td>`;
+      } else {
+        bhtml += `<td>${renderInput(r, col, cIdx)}</td>`;
+      }
+    });
+    bhtml += '</tr>';
+  });
+
+  tbody.innerHTML = bhtml;
+  calculateAll();
+}
+
+function renderInput(rowDef, colData, cIdx) {
+  const val = colData[rowDef.key] !== undefined ? colData[rowDef.key] : '';
+  switch(rowDef.inputType) {
+    case "text":
+      return `<input type="text" value="${htmlEscape(val)}" onchange="updateVal(${cIdx}, '${rowDef.key}', this.value)">`;
+    case "number":
+      return `<input type="number" value="${val}" onchange="updateVal(${cIdx}, '${rowDef.key}', parseFloat(this.value)||0)">`;
+    case "date":
+      return `<input type="date" value="${val}" onchange="updateVal(${cIdx}, '${rowDef.key}', this.value)">`;
+    case "carrier-select":
+      return `<select onchange="updateCarrier(${cIdx}, this.value)">
+        ${Object.keys(PLANS).map(c => `<option value="${c}" ${c === val ? 'selected' : ''}>${c}</option>`).join('')}
+      </select>`;
+    case "plan-select":
+    case "post-plan-select":
+      let carrier = colData.carrier || "UQ";
+      let pList = PLANS[carrier] || [];
+      return `<select onchange="updateVal(${cIdx}, '${rowDef.key}', this.value)">
+        ${pList.map(p => `<option value="${p.name}" ${p.name === val ? 'selected' : ''}>${p.name}</option>`).join('')}
+      </select>`;
+    case "family-select":
+    case "post-family-select":
+      return `<select onchange="updateVal(${cIdx}, '${rowDef.key}', this.value)">
+        ${FAMILY_DISCOUNTS.map(f => `<option value="${f.name}" ${f.name === val ? 'selected' : ''}>${f.name}</option>`).join('')}
+      </select>`;
+    case "disc1-select":
+    case "post-disc1-select":
+      return `<select onchange="updateVal(${cIdx}, '${rowDef.key}', this.value)">
+        ${DISCOUNTS_1.map(d => `<option value="${d.name}" ${d.name === val ? 'selected' : ''}>${d.name}</option>`).join('')}
+      </select>`;
+    case "disc2-select":
+    case "post-disc2-select":
+      return `<select onchange="updateVal(${cIdx}, '${rowDef.key}', this.value)">
+        ${DISCOUNTS_2.map(d => `<option value="${d.name}" ${d.name === val ? 'selected' : ''}>${d.name}</option>`).join('')}
+      </select>`;
+    case "opt-select":
+      return `<select onchange="updateVal(${cIdx}, '${rowDef.key}', this.value)">
+        ${OPTIONS.map(o => `<option value="${o.name}" ${o.name === val ? 'selected' : ''}>${o.name}</option>`).join('')}
+      </select>`;
+    default:
+      return '';
+  }
+}
+
+function htmlEscape(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function updateVal(colIdx, key, val) {
+  columnsData[colIdx][key] = val;
+  calculateAll();
+}
+
+function updateCarrier(colIdx, carrier) {
+  columnsData[colIdx].carrier = carrier;
+  let pList = PLANS[carrier] || [];
+  if (pList.length > 0) {
+    columnsData[colIdx].plan = pList[0].name;
+    columnsData[colIdx].postPlan = pList[0].name;
+  }
+  renderTable();
+}
+
+function formatYen(num) {
+  return "¥" + Math.round(num).toLocaleString('ja-JP');
+}
+
+function calculateAll() {
+  columnsData.forEach((col, idx) => {
+    // 料金基本
+    const planFee = getPlanFee(col.plan);
+    const postPlanFee = getPlanFee(col.postPlan);
+    const disc1Fee = getDisc1Fee(col.disc1);
+    const disc2Fee = getDisc2Fee(col.disc2);
+    const postDisc1Fee = getDisc1Fee(col.postDisc1);
+    const postDisc2Fee = getDisc2Fee(col.postDisc2);
+
+    const opt1Fee = getOptFee(col.opt1);
+    const opt2Fee = getOptFee(col.opt2);
+    const opt3Fee = getOptFee(col.opt3);
+
+    const opt1Total = opt1Fee * (col.opt1Months || 0) * (col.opt1Lines || 0);
+    const opt2Total = opt2Fee * (col.opt2Months || 0) * (col.opt2Lines || 0);
+    const opt3Total = opt3Fee * (col.opt3Months || 0) * (col.opt3Lines || 0);
+
+    const remainingDays = calcRemainingDays(col.contractDate);
+    const totalDaysInMonth = col.contractDate ? getDaysInMonth(new Date(col.contractDate).getFullYear(), new Date(col.contractDate).getMonth()) : 30;
+
+    // 日割計算 (日割り料金 = 月額 * 残日数 / 月日数)
+    const prorateRatio = remainingDays / totalDaysInMonth;
+    const prorateNoFamilyPlan = Math.round(planFee * prorateRatio * (col.linesNoFamily || 0));
+    const prorateFamilyPlan = Math.round(planFee * prorateRatio * (col.linesFamily || 0));
+
+    // 事務手数料
+    const totalAdminFee = (col.adminFeePerLine || 0) * ((col.linesNoFamily || 0) + (col.linesFamily || 0));
+
+    // 2ヶ月目以降（初期契約月数分）
+    const initial2ndNoFamilyPlan = planFee * (col.initialMonths || 0) * (col.linesNoFamily || 0);
+    const initial2ndFamilyPlan = planFee * (col.initialMonths || 0) * (col.linesFamily || 0);
+
+    // 変更後 割引合計
+    const postNoFamilyDisc1 = postDisc1Fee * (col.postMonths || 0) * (col.linesNoFamily || 0);
+    const postFamilyDisc1 = postDisc1Fee * (col.postMonths || 0) * (col.linesFamily || 0);
+    const postNoFamilyDisc2 = postDisc2Fee * (col.postMonths || 0) * (col.linesNoFamily || 0);
+    const postFamilyDisc2 = postDisc2Fee * (col.postMonths || 0) * (col.linesFamily || 0);
+
+    // 通信費 合計金額
+    const grandTotal = totalAdminFee 
+      + prorateNoFamilyPlan + prorateFamilyPlan
+      + initial2ndNoFamilyPlan + initial2ndFamilyPlan
+      + postNoFamilyDisc1 + postFamilyDisc1
+      + postNoFamilyDisc2 + postFamilyDisc2
+      + opt1Total + opt2Total + opt3Total;
+
+    // DOMへの反映
+    setCell(`planFee_${idx}`, formatYen(planFee));
+    setCell(`familyDiscFee_${idx}`, "¥0");
+    setCell(`disc1Fee_${idx}`, formatYen(disc1Fee));
+    setCell(`disc2Fee_${idx}`, formatYen(disc2Fee));
+
+    setCell(`postPlanFee_${idx}`, formatYen(postPlanFee));
+    setCell(`postFamilyDiscFee_${idx}`, "¥0");
+    setCell(`postDisc1Fee_${idx}`, formatYen(postDisc1Fee));
+    setCell(`postDisc2Fee_${idx}`, formatYen(postDisc2Fee));
+
+    setCell(`opt1Total_${idx}`, formatYen(opt1Total));
+    setCell(`opt2Total_${idx}`, formatYen(opt2Total));
+    setCell(`opt3Total_${idx}`, formatYen(opt3Total));
+
+    setCell(`prorateDays_${idx}`, `${remainingDays}日`);
+    setCell(`prorateNoFamilyPlan_${idx}`, formatYen(prorateNoFamilyPlan));
+    setCell(`prorateFamilyPlan_${idx}`, formatYen(prorateFamilyPlan));
+    setCell(`totalAdminFee_${idx}`, formatYen(totalAdminFee));
+
+    setCell(`initial2ndNoFamilyPlan_${idx}`, formatYen(initial2ndNoFamilyPlan));
+    setCell(`initial2ndFamilyPlan_${idx}`, formatYen(initial2ndFamilyPlan));
+
+    setCell(`postNoFamilyDisc1_${idx}`, formatYen(postNoFamilyDisc1));
+    setCell(`postFamilyDisc1_${idx}`, formatYen(postFamilyDisc1));
+    setCell(`postNoFamilyDisc2_${idx}`, formatYen(postNoFamilyDisc2));
+    setCell(`postFamilyDisc2_${idx}`, formatYen(postFamilyDisc2));
+
+    setCell(`grandTotal_${idx}`, formatYen(grandTotal));
+  });
+}
+
+function setCell(id, text) {
+  const el = document.getElementById("cell_" + id);
+  if (el) el.innerText = text;
+}
+
+function addColumn() {
+  columnsData.push({
+    name: `新規社員 ${columnsData.length + 1}`,
+    carrier: "UQ",
+    plan: "トクトクプラン2~30GB",
+    familyDisc: "なし",
+    disc1: "なし",
+    disc2: "なし",
+    postPlan: "トクトクプラン2~30GB",
+    postFamilyDisc: "なし",
+    postDisc1: "なし",
+    postDisc2: "なし",
+    opt1: "なし", opt1Months: 0, opt1Lines: 0,
+    opt2: "なし", opt2Months: 0, opt2Lines: 0,
+    opt3: "なし", opt3Months: 0, opt3Lines: 0,
+    linesNoFamily: 1,
+    linesFamily: 0,
+    adminFeePerLine: 3850,
+    contractDate: new Date().toISOString().split('T')[0],
+    initialMonths: 1,
+    postMonths: 1
+  });
+  renderTable();
+}
+
+function removeColumn(idx) {
+  if (columnsData.length <= 1) {
+    alert("最低1列は必要です。");
+    return;
+  }
+  columnsData.splice(idx, 1);
+  renderTable();
+}
+
+function resetToSample() {
+  location.reload();
+}
+
+// 初回レンダリング
+window.onload = () => {
+  renderTable();
+};
+</script>
+</body>
+</html>
